@@ -1,0 +1,35 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "GET без session_id — ошибка",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 400
+    },
+    {
+      "name": "GET с session_id — анонимный пользователь",
+      "method": "GET",
+      "path": "/",
+      "headers": {"X-Session-Id": "test-session-abc123"},
+      "expectedStatus": 200,
+      "expectedBody": {"registered": false},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST сохранение имени",
+      "method": "POST",
+      "path": "/",
+      "headers": {"X-Session-Id": "test-session-abc123"},
+      "body": {"name": "Алексей", "nickname": "alex"},
+      "expectedStatus": 200,
+      "expectedBody": {"registered": true},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
