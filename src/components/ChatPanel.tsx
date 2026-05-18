@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import Icon from "@/components/ui/icon";
+import { speakText, stopSpeaking } from "@/lib/tts";
 
 const CHAT_URL = "https://functions.poehali.dev/2893fb7c-9041-491c-8699-bd0dc07fa5c7";
 
@@ -59,44 +60,8 @@ export function ChatPanel() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  function getBestVoice(): SpeechSynthesisVoice | null {
-    const voices = window.speechSynthesis.getVoices();
-    const ruFemale = voices.find(
-      (v) => v.lang.startsWith("ru") && /female|woman|жен/i.test(v.name)
-    );
-    const ruAny = voices.find((v) => v.lang.startsWith("ru"));
-    const female = voices.find((v) => /female|woman/i.test(v.name));
-    return ruFemale || ruAny || female || voices[0] || null;
-  }
-
-  function speakText(text: string) {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "ru-RU";
-    utterance.rate = 1.0;
-    utterance.pitch = 1.1;
-
-    const trySpeak = () => {
-      const voice = getBestVoice();
-      if (voice) utterance.voice = voice;
-      utterance.onstart = () => setSpeaking(true);
-      utterance.onend = () => setSpeaking(false);
-      utterance.onerror = () => setSpeaking(false);
-      window.speechSynthesis.speak(utterance);
-    };
-
-    if (window.speechSynthesis.getVoices().length > 0) {
-      trySpeak();
-    } else {
-      window.speechSynthesis.onvoiceschanged = () => {
-        trySpeak();
-        window.speechSynthesis.onvoiceschanged = null;
-      };
-    }
-  }
-
-  function stopSpeaking() {
-    window.speechSynthesis.cancel();
+  function handleStopSpeaking() {
+    stopSpeaking();
     setSpeaking(false);
   }
 
@@ -105,7 +70,7 @@ export function ChatPanel() {
     setMessages((prev) => [...prev, { role: "user", text }]);
     setInput("");
     setLoading(true);
-    stopSpeaking();
+    handleStopSpeaking();
 
     try {
       const res = await fetch(CHAT_URL, {
@@ -116,7 +81,7 @@ export function ChatPanel() {
       const data = await res.json();
       const answer = data.answer || "Что-то пошло не так...";
       setMessages((prev) => [...prev, { role: "assistant", text: answer }]);
-      speakText(answer);
+      speakText(answer, () => setSpeaking(true), () => setSpeaking(false));
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -236,7 +201,7 @@ export function ChatPanel() {
 
             {speaking && (
               <button
-                onClick={stopSpeaking}
+                onClick={handleStopSpeaking}
                 title="Остановить озвучку"
                 className="size-8 rounded-full flex items-center justify-center bg-primary/20 border border-primary/40 text-primary hover:bg-primary/30 transition-all duration-200"
               >

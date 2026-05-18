@@ -2,12 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@/hooks/use-user';
 import { cn } from '@/lib/utils';
 import Icon from '@/components/ui/icon';
+import { speakText } from '@/lib/tts';
 
-interface WelcomeGreetingProps {
-  onSpeak?: (text: string) => void;
-}
-
-export function WelcomeGreeting({ onSpeak }: WelcomeGreetingProps) {
+export function WelcomeGreeting() {
   const { user, loading, saveProfile, getDisplayName } = useUser();
   const [greeting, setGreeting] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -34,10 +31,10 @@ export function WelcomeGreeting({ onSpeak }: WelcomeGreetingProps) {
     // Анимация появления
     const t = setTimeout(() => setVisible(true), 300);
 
-    // Озвучиваем один раз
-    if (!spokenRef.current && onSpeak) {
+    // Озвучиваем один раз через Groq TTS
+    if (!spokenRef.current) {
       spokenRef.current = true;
-      const tSpeak = setTimeout(() => onSpeak(text), 600);
+      const tSpeak = setTimeout(() => speakText(text), 600);
       return () => { clearTimeout(t); clearTimeout(tSpeak); };
     }
 

@@ -1,38 +1,10 @@
 import { GL } from "./gl";
 import { Pill } from "./Pill";
-import { useCallback } from "react";
 import { Header } from "./Header";
 import { ChatPanel } from "./ChatPanel";
 import { WelcomeGreeting } from "./WelcomeGreeting";
 
 export function Hero() {
-  const handleSpeak = useCallback((text: string) => {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ru-RU';
-    utterance.pitch = 1.1;
-
-    const trySpeak = () => {
-      const voices = window.speechSynthesis.getVoices();
-      const voice =
-        voices.find((v) => v.lang.startsWith('ru') && /female|woman|жен/i.test(v.name)) ||
-        voices.find((v) => v.lang.startsWith('ru')) ||
-        voices.find((v) => /female|woman/i.test(v.name)) ||
-        voices[0];
-      if (voice) utterance.voice = voice;
-      window.speechSynthesis.speak(utterance);
-    };
-
-    if (window.speechSynthesis.getVoices().length > 0) {
-      trySpeak();
-    } else {
-      window.speechSynthesis.onvoiceschanged = () => {
-        trySpeak();
-        window.speechSynthesis.onvoiceschanged = null;
-      };
-    }
-  }, []);
-
   return (
     <div className="flex flex-col min-h-svh justify-between relative z-10">
       <GL hovering={false} />
@@ -49,7 +21,7 @@ export function Hero() {
         </p>
 
         <div className="mt-8">
-          <WelcomeGreeting onSpeak={handleSpeak} />
+          <WelcomeGreeting />
         </div>
 
         <ChatPanel />
