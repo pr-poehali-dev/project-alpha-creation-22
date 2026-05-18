@@ -1,0 +1,26 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Пустой текст возвращает ошибку",
+      "method": "POST",
+      "path": "/",
+      "body": {},
+      "expectedStatus": 400
+    },
+    {
+      "name": "Синтез речи",
+      "method": "POST",
+      "path": "/",
+      "body": {"text": "Привет! Я Вики."},
+      "expectedStatus": 200,
+      "expectedBody": {"audio": "string"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

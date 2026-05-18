@@ -1,14 +1,14 @@
 import { GL } from "./gl";
 import { Pill } from "./Pill";
-import { Button } from "./ui/button";
 import { useState } from "react";
 import { Header } from "./Header";
+import { ChatPanel } from "./ChatPanel";
 
 export function Hero() {
   const [hovering, setHovering] = useState(false);
 
   return (
-    <div className="flex flex-col h-svh justify-between relative z-10">
+    <div className="flex flex-col min-h-svh justify-between relative z-10">
       <GL hovering={hovering} />
       <Header />
 
@@ -22,25 +22,7 @@ export function Hero() {
           Искусственный интеллект, который учится с каждым взаимодействием. Генерация текста, фото, видео и музыки — всё в одном месте.
         </p>
 
-        <a className="contents max-sm:hidden" href="#start">
-          <Button
-            className="mt-14"
-            onMouseEnter={() => setHovering(true)}
-            onMouseLeave={() => setHovering(false)}
-          >
-            [Начать бесплатно]
-          </Button>
-        </a>
-        <a className="contents sm:hidden" href="#start">
-          <Button
-            size="sm"
-            className="mt-14"
-            onMouseEnter={() => setHovering(true)}
-            onMouseLeave={() => setHovering(false)}
-          >
-            [Начать бесплатно]
-          </Button>
-        </a>
+        <ChatPanel />
       </div>
     </div>
   );
