@@ -1,15 +1,49 @@
 import { useState, useRef, useEffect } from "react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import Icon from "@/components/ui/icon";
 
 const CHAT_URL = "https://functions.poehali.dev/2893fb7c-9041-491c-8699-bd0dc07fa5c7";
-const TTS_URL = "https://functions.poehali.dev/9e7e379a-051a-4882-8a25-16c1241a5ca1";
-const STT_URL = "https://functions.poehali.dev/4186db87-e703-459f-8348-8ef2427c0dea";
 
 interface Message {
   role: "user" | "assistant";
   text: string;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
+
+interface SpeechRecognition extends EventTarget {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start(): void;
+  stop(): void;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onend: (() => void) | null;
+}
+
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number;
+  [index: number]: SpeechRecognitionResult;
+}
+
+interface SpeechRecognitionResult {
+  readonly length: number;
+  [index: number]: SpeechRecognitionAlternative;
+  isFinal: boolean;
+}
+
+interface SpeechRecognitionAlternative {
+  transcript: string;
 }
 
 export function ChatPanel() {
@@ -18,21 +52,60 @@ export function ChatPanel() {
   const [loading, setLoading] = useState(false);
   const [recording, setRecording] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  function getBestVoice(): SpeechSynthesisVoice | null {
+    const voices = window.speechSynthesis.getVoices();
+    const ruFemale = voices.find(
+      (v) => v.lang.startsWith("ru") && /female|woman|жен/i.test(v.name)
+    );
+    const ruAny = voices.find((v) => v.lang.startsWith("ru"));
+    const female = voices.find((v) => /female|woman/i.test(v.name));
+    return ruFemale || ruAny || female || voices[0] || null;
+  }
+
+  function speakText(text: string) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "ru-RU";
+    utterance.rate = 1.0;
+    utterance.pitch = 1.1;
+
+    const trySpeak = () => {
+      const voice = getBestVoice();
+      if (voice) utterance.voice = voice;
+      utterance.onstart = () => setSpeaking(true);
+      utterance.onend = () => setSpeaking(false);
+      utterance.onerror = () => setSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    };
+
+    if (window.speechSynthesis.getVoices().length > 0) {
+      trySpeak();
+    } else {
+      window.speechSynthesis.onvoiceschanged = () => {
+        trySpeak();
+        window.speechSynthesis.onvoiceschanged = null;
+      };
+    }
+  }
+
+  function stopSpeaking() {
+    window.speechSynthesis.cancel();
+    setSpeaking(false);
+  }
+
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return;
-    const userMsg: Message = { role: "user", text };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, { role: "user", text }]);
     setInput("");
     setLoading(true);
+    stopSpeaking();
 
     try {
       const res = await fetch(CHAT_URL, {
@@ -54,76 +127,35 @@ export function ChatPanel() {
     }
   }
 
-  async function speakText(text: string) {
-    try {
-      setSpeaking(true);
-      const res = await fetch(TTS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      const data = await res.json();
-      if (!data.audio) return;
-      const bytes = Uint8Array.from(atob(data.audio), (c) => c.charCodeAt(0));
-      const blob = new Blob([bytes], { type: "audio/mpeg" });
-      const url = URL.createObjectURL(blob);
-      if (audioRef.current) {
-        audioRef.current.pause();
-        URL.revokeObjectURL(audioRef.current.src);
-      }
-      const audio = new Audio(url);
-      audioRef.current = audio;
-      audio.onended = () => setSpeaking(false);
-      audio.onerror = () => setSpeaking(false);
-      audio.play();
-    } catch {
-      setSpeaking(false);
+  function startRecording() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      alert("Голосовой ввод не поддерживается в этом браузере. Используй Chrome или Edge.");
+      return;
     }
-  }
 
-  function stopSpeaking() {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-    }
-    setSpeaking(false);
-  }
+    const recognition = new SpeechRec();
+    recognition.lang = "ru-RU";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognitionRef.current = recognition;
 
-  async function startRecording() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunksRef.current = [];
-      const recorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = recorder;
-      recorder.ondataavailable = (e) => chunksRef.current.push(e.data);
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        const buffer = await blob.arrayBuffer();
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-        try {
-          const res = await fetch(STT_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ audio: b64 }),
-          });
-          const data = await res.json();
-          if (data.text) {
-            sendMessage(data.text);
-          }
-        } catch {
-          // ignore
-        }
-      };
-      recorder.start();
-      setRecording(true);
-    } catch {
-      alert("Нет доступа к микрофону");
-    }
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(transcript);
+      setRecording(false);
+      sendMessage(transcript);
+    };
+
+    recognition.onerror = () => setRecording(false);
+    recognition.onend = () => setRecording(false);
+
+    recognition.start();
+    setRecording(true);
   }
 
   function stopRecording() {
-    mediaRecorderRef.current?.stop();
+    recognitionRef.current?.stop();
     setRecording(false);
   }
 
@@ -136,7 +168,6 @@ export function ChatPanel() {
 
   return (
     <div className="w-full max-w-2xl mx-auto mt-10 px-4">
-      {/* История сообщений */}
       {messages.length > 0 && (
         <div className="mb-4 max-h-80 overflow-y-auto flex flex-col gap-3 pr-1">
           {messages.map((msg, i) => (
@@ -148,13 +179,13 @@ export function ChatPanel() {
               )}
             >
               {msg.role === "assistant" && (
-                <div className="size-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5 shadow-glow shadow-primary/40">
+                <div className="size-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5 shadow-[0_0_12px] shadow-primary/40">
                   <span className="text-xs font-bold text-black">В</span>
                 </div>
               )}
               <div
                 className={cn(
-                  "font-mono text-sm rounded-sm px-4 py-3 max-w-[80%] leading-relaxed",
+                  "font-mono text-sm rounded-sm px-4 py-3 max-w-[80%] leading-relaxed text-left",
                   msg.role === "user"
                     ? "bg-[#262626]/80 text-foreground/80 border border-border"
                     : "bg-primary/10 text-foreground border border-primary/20"
@@ -166,7 +197,7 @@ export function ChatPanel() {
           ))}
           {loading && (
             <div className="flex gap-3 items-start">
-              <div className="size-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5 shadow-glow shadow-primary/40">
+              <div className="size-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5 shadow-[0_0_12px] shadow-primary/40">
                 <span className="text-xs font-bold text-black">В</span>
               </div>
               <div className="font-mono text-sm bg-primary/10 border border-primary/20 rounded-sm px-4 py-3 text-foreground/50">
@@ -178,7 +209,6 @@ export function ChatPanel() {
         </div>
       )}
 
-      {/* Панель ввода */}
       <div className="relative border border-border bg-[#111]/80 backdrop-blur-sm rounded-sm">
         <textarea
           value={input}
@@ -190,55 +220,47 @@ export function ChatPanel() {
         />
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {/* Кнопка микрофона */}
             <button
               onClick={recording ? stopRecording : startRecording}
               disabled={loading}
+              title={recording ? "Остановить запись" : "Голосовой ввод"}
               className={cn(
                 "size-8 rounded-full flex items-center justify-center transition-all duration-200",
                 recording
                   ? "bg-red-500/20 border border-red-500/50 text-red-400 animate-pulse"
                   : "bg-[#262626] border border-border text-foreground/50 hover:text-foreground hover:border-foreground/30"
               )}
-              title={recording ? "Остановить запись" : "Голосовой ввод"}
             >
               <Icon name={recording ? "MicOff" : "Mic"} size={14} />
             </button>
 
-            {/* Кнопка остановить голос */}
             {speaking && (
               <button
                 onClick={stopSpeaking}
-                className="size-8 rounded-full flex items-center justify-center bg-primary/20 border border-primary/40 text-primary hover:bg-primary/30 transition-all duration-200"
                 title="Остановить озвучку"
+                className="size-8 rounded-full flex items-center justify-center bg-primary/20 border border-primary/40 text-primary hover:bg-primary/30 transition-all duration-200"
               >
                 <Icon name="VolumeX" size={14} />
               </button>
             )}
-
             {speaking && (
-              <span className="font-mono text-xs text-primary/60 animate-pulse">
-                озвучиваю...
-              </span>
+              <span className="font-mono text-xs text-primary/60 animate-pulse">озвучиваю...</span>
             )}
             {recording && (
-              <span className="font-mono text-xs text-red-400/80 animate-pulse">
-                слушаю...
-              </span>
+              <span className="font-mono text-xs text-red-400/80 animate-pulse">слушаю...</span>
             )}
           </div>
 
-          {/* Кнопка отправить */}
           <button
             onClick={() => sendMessage(input)}
             disabled={loading || !input.trim()}
+            title="Отправить (Enter)"
             className={cn(
               "size-8 rounded-full flex items-center justify-center transition-all duration-200",
               input.trim() && !loading
                 ? "bg-primary text-black hover:bg-primary/80"
                 : "bg-[#262626] border border-border text-foreground/20"
             )}
-            title="Отправить (Enter)"
           >
             <Icon name="ArrowUp" size={14} />
           </button>

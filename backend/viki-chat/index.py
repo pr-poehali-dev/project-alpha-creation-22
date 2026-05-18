@@ -1,10 +1,10 @@
 import json
 import os
-from openai import OpenAI
+from groq import Groq
 
 
 def handler(event: dict, context) -> dict:
-    """Отвечает на текстовый запрос пользователя от имени Вики."""
+    """Отвечает на текстовый запрос пользователя от имени Вики через Groq."""
     if event.get('httpMethod') == 'OPTIONS':
         return {
             'statusCode': 200,
@@ -27,10 +27,10 @@ def handler(event: dict, context) -> dict:
             'body': json.dumps({'error': 'Сообщение не указано'})
         }
 
-    client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+    client = Groq(api_key=os.environ['GROQ_API_KEY'])
 
     response = client.chat.completions.create(
-        model='gpt-4o-mini',
+        model='llama-3.3-70b-versatile',
         messages=[
             {
                 'role': 'system',
